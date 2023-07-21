@@ -1,5 +1,4 @@
-import Image from "next/image";
-import InfiniteGrid from "./Grid";
+import InfiniteGrid from "./InfiniteGrid";
 
 export default function Home() {
   return <InfiniteGrid />;
