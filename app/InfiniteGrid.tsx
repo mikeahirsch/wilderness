@@ -58,30 +58,25 @@ const InfiniteGrid: React.FC = () => {
   }, [navigateToXY, plot]);
 
   useEffect(() => {
-    if (!isScrolling) {
-      fetchIntervalRef.current = setInterval(async () => {
-        if (fetchQueue.length > 0) {
-          const fetchRequest = fetchQueue.shift();
-
-          if (fetchRequest) {
-            try {
-              const ethscription = await fetchEthscription(
-                fetchRequest.x,
-                fetchRequest.y
-              );
+    if (!isScrolling && fetchQueue.length > 0) {
+      Promise.all(
+        fetchQueue.map(async (fetchRequest) => {
+          return fetchEthscription(
+            fetchRequest.x,
+            fetchRequest.y,
+            fetchRequest.subscribers
+          )
+            .then((ethscription) => {
               fetchRequest.resolve(ethscription);
-            } catch (error) {
+            })
+            .catch((error) => {
               fetchRequest.reject(error);
-            }
-          }
-        }
-      }, 50);
-
-      return () => {
-        if (fetchIntervalRef.current) {
-          clearInterval(fetchIntervalRef.current);
-        }
-      };
+            });
+        })
+      ).then(() => {
+        // Once all fetches are done, clear the fetchQueue
+        fetchQueue.splice(0, fetchQueue.length);
+      });
     }
   }, [isScrolling]);
 
@@ -148,6 +143,10 @@ const InfiniteGrid: React.FC = () => {
         });
       }
     }
+  };
+
+  const handleScroll = (props: GridOnScrollProps) => {
+    currentScroll.current = props;
 
     if (!isScrolling) {
       setIsScrolling(true);
@@ -162,10 +161,6 @@ const InfiniteGrid: React.FC = () => {
     scrollDebounceRef.current = setTimeout(async () => {
       setIsScrolling(false);
     }, SCROLL_STOP_DELAY);
-  };
-
-  const handleScroll = (props: GridOnScrollProps) => {
-    currentScroll.current = props;
   };
 
   if (!dimensionsInitialized) {

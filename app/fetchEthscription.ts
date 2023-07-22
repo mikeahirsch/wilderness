@@ -27,6 +27,7 @@ export interface FetchRequest {
   y: number;
   resolve: (value: Ethscription | null) => void;
   reject: (reason?: any) => void;
+  subscribers?: Subscriber[];
 }
 
 export interface Subscriber {
@@ -47,6 +48,9 @@ export const fetchQueue: FetchRequest[] = [];
 export const ethscriptionCache: { [key: string]: EthscriptionCacheItem } = {};
 export const cacheLifetime = 5 * 60 * 1000; // Cache items expire after 5 minutes
 
+export const fetchPromises: { [hash: string]: Promise<Ethscription | null> } =
+  {};
+
 export const getEthscriptionCache = (x: number, y: number) => {
   const hash = sha256(`data:,${x},${y}`).toString();
   const cachedResponse = ethscriptionCache[hash];
@@ -60,60 +64,46 @@ export const fetchEthscription = async (
 ) => {
   const hash = sha256(`data:,${x},${y}`).toString();
 
-  // Check if we have a cached response
-  let cachedResponse = ethscriptionCache[hash];
+  if (!fetchPromises[hash]) {
+    // directly assign the fetch operation to `fetchPromises[hash]`
+    fetchPromises[hash] = fetch(
+      `https://api.ethscriptions.com/api/ethscriptions/exists/${hash}`
+    )
+      .then(async (response) => {
+        const json: FetchResponse = await response.json();
 
-  if (cachedResponse) {
-    const now = Date.now();
-    const age = now - cachedResponse.timestamp;
+        // Check if we have a cached response
+        let cachedResponse = ethscriptionCache[hash];
+        if (!cachedResponse) {
+          // If we don't have a cached response, create an empty cache entry
+          cachedResponse = ethscriptionCache[hash] = {
+            ethscription: null,
+            timestamp: Date.now(),
+            subscribers,
+            fetchPromise: null,
+          };
+        }
 
-    // If there is a fetch in progress, return the result of that fetch
-    if (cachedResponse.fetchPromise) {
-      return await cachedResponse.fetchPromise;
-    }
+        // Store the new response in the cache with the current timestamp
+        cachedResponse.ethscription = json.ethscription;
+        cachedResponse.timestamp = Date.now();
+        cachedResponse.fetchPromise = null;
 
-    if (age < cacheLifetime) {
-      // Cached item is still fresh, so we can return it
-      return cachedResponse.ethscription;
-    } else {
-      // Cached item has expired, so we clear the cached data
-      cachedResponse.ethscription = null;
-    }
-  } else {
-    // If we don't have a cached response, create an empty cache entry
-    cachedResponse = ethscriptionCache[hash] = {
-      ethscription: null,
-      timestamp: Date.now(),
-      subscribers,
-      fetchPromise: null,
-    };
+        // Call the subscribers with the new data
+        cachedResponse.subscribers.forEach((subscriber) =>
+          subscriber.callback(cachedResponse.ethscription)
+        );
+
+        return json.ethscription;
+      })
+      .catch((error) => {
+        // handle error and remove from cache
+        delete fetchPromises[hash];
+        throw error; // rethrow the error so it can be caught and handled in the calling code
+      });
   }
 
-  // If we don't have a cached response, fetch a new one
-  const fetchPromise = fetch(
-    `https://api.ethscriptions.com/api/ethscriptions/exists/${hash}`
-  )
-    .then((response) => response.json())
-    .then((json: FetchResponse) => {
-      // Store the new response in the cache with the current timestamp
-      cachedResponse.ethscription = json.ethscription;
-      cachedResponse.timestamp = Date.now();
-      cachedResponse.fetchPromise = null;
-
-      // Call the subscribers with the new data
-      cachedResponse.subscribers.forEach((subscriber) =>
-        subscriber.callback(cachedResponse.ethscription)
-      );
-
-      return json.ethscription;
-    });
-
-  // Store the fetch promise in the cache so other calls can wait for it
-  cachedResponse.fetchPromise = fetchPromise;
-
-  const res = await fetchPromise;
-
-  return res;
+  return fetchPromises[hash];
 };
 
 export const unsubscribeToEthscription = (
@@ -148,7 +138,18 @@ export const subscribeToEthscription = (
   const hash = sha256(`data:,${x},${y}`).toString();
   if (!ethscriptionCache[hash]) {
     const subscriber: Subscriber = { callback, count: 1 };
-    fetchEthscription(x, y, [subscriber]);
+    fetchEthscription(x, y)
+      .then((ethscription) => {
+        ethscriptionCache[hash] = {
+          ethscription,
+          timestamp: Date.now(),
+          subscribers: [subscriber],
+        };
+        callback(ethscription);
+      })
+      .catch((error) => {
+        console.log(error);
+      });
   } else {
     const existingSubscriberIndex = ethscriptionCache[
       hash

@@ -95,20 +95,21 @@ export const Cell: React.FC<CellProps> = ({
   }, [neighbors, x, y]);
 
   useEffect(() => {
-    Promise.all([
-      subscribeToEthscription(x - 1, y, updateNeighbors),
-      subscribeToEthscription(x + 1, y, updateNeighbors),
-      subscribeToEthscription(x, y - 1, updateNeighbors),
-      subscribeToEthscription(x, y + 1, updateNeighbors),
-    ]).then((unsubCallbacks) => {
-      unsubscribesRef.current = unsubCallbacks;
-    });
-
-    // Cleanup function
-    return () => {
-      unsubscribesRef.current.forEach((unsubscribe) => unsubscribe());
-    };
-  }, [updateNeighbors, x, y]);
+    if (cellData) {
+      Promise.all([
+        subscribeToEthscription(x - 1, y, updateNeighbors),
+        subscribeToEthscription(x + 1, y, updateNeighbors),
+        subscribeToEthscription(x, y - 1, updateNeighbors),
+        subscribeToEthscription(x, y + 1, updateNeighbors),
+      ]).then((unsubCallbacks) => {
+        unsubscribesRef.current = unsubCallbacks;
+      });
+      // Cleanup function
+      return () => {
+        unsubscribesRef.current.forEach((unsubscribe) => unsubscribe());
+      };
+    }
+  }, [cellData, updateNeighbors, x, y]);
 
   const walletColor = cellData?.ethscription?.current_owner
     ? getWalletColor(cellData.ethscription.current_owner)
