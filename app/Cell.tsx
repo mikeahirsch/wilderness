@@ -146,20 +146,25 @@ export const Cell: React.FC<CellProps> = ({
   return (
     <div style={style as CSSProperties}>
       {cellData?.ethscription?.current_owner ? (
-        <div
-          className={`w-full h-full flex flex-col items-center justify-center`}
-          style={{
-            backgroundSize: "cover",
-            backgroundRepeat: "no-repeat",
-            backgroundPosition: "center",
-            imageRendering: "pixelated",
-            backgroundColor: walletColor, // fallback background color
-            position: "relative",
-            ...borderStyle,
-          }}
+        <a
+          href={`https://ethscriptions.com/ethscriptions/${cellData?.ethscription.transaction_hash}`}
+          target="_blank"
         >
-          <div>{`${x},${y}`}</div>
-        </div>
+          <div
+            className={`w-full h-full flex flex-col items-center justify-center transition-all duration-200 hover:opacity-90`}
+            style={{
+              backgroundSize: "cover",
+              backgroundRepeat: "no-repeat",
+              backgroundPosition: "center",
+              imageRendering: "pixelated",
+              backgroundColor: walletColor, // fallback background color
+              position: "relative",
+              ...borderStyle,
+            }}
+          >
+            <div>{`${x},${y}`}</div>
+          </div>
+        </a>
       ) : (
         <div
           className={
