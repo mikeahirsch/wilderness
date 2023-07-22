@@ -120,10 +120,10 @@ export const Cell: React.FC<CellProps> = ({
     : "";
 
   let borderStyle: CSSProperties = {
-    borderTop: "4px solid black",
-    borderLeft: "4px solid black",
-    borderBottom: "4px solid black",
-    borderRight: "4px solid black",
+    borderTop: "2px solid black",
+    borderLeft: "2px solid black",
+    borderBottom: "2px solid black",
+    borderRight: "2px solid black",
   };
 
   // Compare with top cell
