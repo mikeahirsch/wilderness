@@ -36,21 +36,16 @@ export const Cell: React.FC<CellProps> = ({
     [key: string]: Ethscription | null;
   }>({});
   const unsubscribesRef = useRef<(() => void)[]>([]);
-  const intervalRef = useRef<NodeJS.Timeout>();
-  const x = useMemo(
-    () => columnIndex + data.originX.current - Math.floor(GRID_SIZE / 2),
-    [columnIndex, data.originX]
-  );
-  const y = useMemo(
-    () => rowIndex + data.originY.current - Math.floor(GRID_SIZE / 2),
-    [data.originY, rowIndex]
-  );
+  const x = columnIndex + data.originX.current - Math.floor(GRID_SIZE / 2);
+  const y = rowIndex + data.originY.current - Math.floor(GRID_SIZE / 2);
 
   const [cellData, setCellData] = useState<{
     ethscription?: Ethscription | null;
   } | null>(null);
 
   useEffect(() => {
+    setCellData(null);
+
     const fetchPromise = new Promise<Ethscription | null>((resolve, reject) => {
       fetchQueue.push({ x, y, resolve, reject });
     });
@@ -169,12 +164,17 @@ export const Cell: React.FC<CellProps> = ({
         <div
           className={
             cellData
-              ? `w-full h-full flex items-center justify-center`
+              ? `w-full h-full flex flex-col items-center justify-center gap-4`
               : "animate-pulse w-full h-full flex items-center justify-center text-black bg-white"
           }
           style={borderStyle}
         >
-          {`${x},${y}`}
+          <div>{`${x},${y}`}</div>
+          {!!cellData && (
+            <div className="bg-green-500 border border-green-700 text-black px-2 py-1 rounded-md">
+              Available
+            </div>
+          )}
         </div>
       )}
     </div>
