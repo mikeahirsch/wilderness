@@ -16,7 +16,7 @@ import { fetchEthscription, fetchQueue } from "./fetchEthscription";
 import { Cell } from "./Cell";
 import { useSearchParams } from "next/navigation";
 
-export const GRID_SIZE = 200; // Maintain a fixed size
+export const GRID_SIZE = 201; // Maintain a fixed size
 export const SCROLL_STOP_DELAY = 500; // Milliseconds to wait after scrolling stops before fetching
 
 const InfiniteGrid: React.FC = () => {
@@ -30,18 +30,28 @@ const InfiniteGrid: React.FC = () => {
   });
   const [dimensionsInitialized, setDimensionsInitialized] = useState(false);
   const gridRef = useRef<Grid>(null);
-  const fetchIntervalRef = useRef<NodeJS.Timeout>();
   const scrollDebounceRef = useRef<NodeJS.Timeout>();
-  const [isScrolling, setIsScrolling] = useState(false);
+  const [isScrolling, setIsScrolling] = useState(true);
+  const hasScrolledToRightEdge = useRef(false);
+  const hasScrolledToLeftEdge = useRef(false);
+  const hasScrolledToTopEdge = useRef(false);
+  const hasScrolledToBottomEdge = useRef(false);
 
   const plot = useMemo(
     () => searchParams.get("plot") as string,
     [searchParams]
   );
 
+  const cellSize = Math.ceil(
+    (windowDimensions.height > windowDimensions.width
+      ? windowDimensions.width
+      : windowDimensions.height) / 3
+  );
+  const halfCellSize = cellSize / 2;
+
   const navigateToXY = useCallback((x: number, y: number) => {
     originX.current = x;
-    originY.current = y;
+    originY.current = -y;
     gridRef.current?.scrollToItem({
       columnIndex: Math.floor(GRID_SIZE / 2),
       rowIndex: Math.floor(GRID_SIZE / 2),
@@ -99,6 +109,21 @@ const InfiniteGrid: React.FC = () => {
     return () => window.removeEventListener("resize", handleResize);
   }, [dimensionsInitialized]);
 
+  const handleEdge = (
+    closeToEdge: boolean,
+    hasScrolledToEdgeRef: React.MutableRefObject<boolean>
+  ) => {
+    let shouldNavigate = false;
+
+    if (closeToEdge && !hasScrolledToEdgeRef.current) {
+      shouldNavigate = true;
+    } else if (!closeToEdge && hasScrolledToEdgeRef.current) {
+      hasScrolledToEdgeRef.current = false;
+    }
+
+    return shouldNavigate;
+  };
+
   const handleItemsRendered = ({
     overscanColumnStartIndex,
     overscanRowStartIndex,
@@ -110,37 +135,31 @@ const InfiniteGrid: React.FC = () => {
     const closeToLeftEdge = overscanColumnStartIndex <= 0;
     const closeToTopEdge = overscanRowStartIndex <= 0;
 
+    const columnsToMiddle = Math.floor(
+      (overscanColumnStopIndex - overscanColumnStartIndex) / 2
+    );
+    const columnInMiddle =
+      overscanColumnStartIndex + columnsToMiddle - Math.floor(GRID_SIZE / 2);
+    const rowsToMiddle = Math.floor(
+      (overscanRowStopIndex - overscanRowStartIndex) / 2
+    );
+    const rowInMiddle =
+      overscanRowStartIndex + rowsToMiddle - Math.floor(GRID_SIZE / 2);
+
     if (currentScroll.current && gridRef.current) {
-      if (closeToRightEdge) {
-        originX.current += 100;
-        gridRef.current.scrollTo({
-          scrollTop: currentScroll.current.scrollTop,
-          scrollLeft: currentScroll.current.scrollLeft - cellSize * 100, // we assume cellSize to be the size of your cell
-        });
-      }
+      let shouldNavigate = false;
+      shouldNavigate =
+        shouldNavigate || handleEdge(closeToTopEdge, hasScrolledToTopEdge);
+      shouldNavigate =
+        shouldNavigate || handleEdge(closeToLeftEdge, hasScrolledToLeftEdge);
+      shouldNavigate =
+        shouldNavigate ||
+        handleEdge(closeToBottomEdge, hasScrolledToBottomEdge);
+      shouldNavigate =
+        shouldNavigate || handleEdge(closeToRightEdge, hasScrolledToRightEdge);
 
-      if (closeToBottomEdge) {
-        originY.current += 100;
-        gridRef.current.scrollTo({
-          scrollTop: currentScroll.current.scrollTop - cellSize * 100,
-          scrollLeft: currentScroll.current.scrollLeft,
-        });
-      }
-
-      if (closeToLeftEdge) {
-        originX.current -= 100;
-        gridRef.current.scrollTo({
-          scrollTop: currentScroll.current.scrollTop,
-          scrollLeft: currentScroll.current.scrollLeft + cellSize * 100,
-        });
-      }
-
-      if (closeToTopEdge) {
-        originY.current -= 100;
-        gridRef.current.scrollTo({
-          scrollTop: currentScroll.current.scrollTop + cellSize * 100,
-          scrollLeft: currentScroll.current.scrollLeft,
-        });
+      if (shouldNavigate) {
+        navigateToXY(rowInMiddle, columnInMiddle);
       }
     }
   };
@@ -166,13 +185,6 @@ const InfiniteGrid: React.FC = () => {
   if (!dimensionsInitialized) {
     return null;
   }
-
-  const cellSize = Math.ceil(
-    (windowDimensions.height > windowDimensions.width
-      ? windowDimensions.width
-      : windowDimensions.height) / 3
-  );
-  const halfCellSize = cellSize / 2;
 
   return (
     <>

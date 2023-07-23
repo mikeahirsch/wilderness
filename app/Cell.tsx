@@ -1,23 +1,13 @@
-import {
-  useState,
-  useEffect,
-  CSSProperties,
-  useRef,
-  useCallback,
-  useMemo,
-} from "react";
+import { useState, useEffect, CSSProperties, useRef, useCallback } from "react";
 import { GridChildComponentProps } from "react-window";
 import {
   Ethscription,
-  EthscriptionCacheItem,
-  ethscriptionCache,
   fetchQueue,
   getEthscriptionCache,
   subscribeToEthscription,
 } from "./fetchEthscription";
 import { getWalletColor } from "./utils";
 import { GRID_SIZE } from "./InfiniteGrid";
-import sha256 from "crypto-js/sha256";
 
 interface CellProps extends GridChildComponentProps {
   data: {
@@ -37,7 +27,7 @@ export const Cell: React.FC<CellProps> = ({
   }>({});
   const unsubscribesRef = useRef<(() => void)[]>([]);
   const x = columnIndex + data.originX.current - Math.floor(GRID_SIZE / 2);
-  const y = rowIndex + data.originY.current - Math.floor(GRID_SIZE / 2);
+  const y = (rowIndex + data.originY.current - Math.floor(GRID_SIZE / 2)) * -1;
 
   const [cellData, setCellData] = useState<{
     ethscription?: Ethscription | null;
@@ -70,25 +60,17 @@ export const Cell: React.FC<CellProps> = ({
   }, [x, y]);
 
   const updateNeighbors = useCallback(() => {
-    const leftNeighbor = getEthscriptionCache(x - 1, y)?.ethscription;
     const rightNeighbor = getEthscriptionCache(x + 1, y)?.ethscription;
-    const topNeighbor = getEthscriptionCache(x, y - 1)?.ethscription;
-    const bottomNeighbor = getEthscriptionCache(x, y + 1)?.ethscription;
+    const bottomNeighbor = getEthscriptionCache(x, y - 1)?.ethscription;
 
-    const didLeftChange =
-      leftNeighbor?.current_owner !== neighbors.left?.current_owner;
     const didRightChange =
       rightNeighbor?.current_owner !== neighbors.right?.current_owner;
-    const didTopChange =
-      topNeighbor?.current_owner !== neighbors.top?.current_owner;
     const didBottomChange =
       bottomNeighbor?.current_owner !== neighbors.bottom?.current_owner;
 
-    if (didLeftChange || didRightChange || didTopChange || didBottomChange) {
+    if (didRightChange || didBottomChange) {
       setNeighbors({
-        left: leftNeighbor,
         right: rightNeighbor,
-        top: topNeighbor,
         bottom: bottomNeighbor,
       });
     }
@@ -97,10 +79,8 @@ export const Cell: React.FC<CellProps> = ({
   useEffect(() => {
     if (cellData) {
       Promise.all([
-        subscribeToEthscription(x - 1, y, updateNeighbors),
         subscribeToEthscription(x + 1, y, updateNeighbors),
         subscribeToEthscription(x, y - 1, updateNeighbors),
-        subscribeToEthscription(x, y + 1, updateNeighbors),
       ]).then((unsubCallbacks) => {
         unsubscribesRef.current = unsubCallbacks;
       });
@@ -116,8 +96,6 @@ export const Cell: React.FC<CellProps> = ({
     : "";
 
   let borderStyle: CSSProperties = {
-    borderTop: "2px solid black",
-    borderLeft: "2px solid black",
     borderBottom: "2px solid black",
     borderRight: "2px solid black",
   };
@@ -125,12 +103,6 @@ export const Cell: React.FC<CellProps> = ({
   // Compare with top cell
   if (cellData?.ethscription?.current_owner) {
     const currentOwner = cellData?.ethscription?.current_owner;
-    if (neighbors.top && neighbors.top?.current_owner === currentOwner) {
-      delete borderStyle["borderTop"];
-    }
-    if (neighbors.left && neighbors.left?.current_owner === currentOwner) {
-      delete borderStyle["borderLeft"];
-    }
     if (neighbors.bottom && neighbors.bottom?.current_owner === currentOwner) {
       delete borderStyle["borderBottom"];
     }
