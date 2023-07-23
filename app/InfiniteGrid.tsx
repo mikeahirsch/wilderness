@@ -17,21 +17,27 @@ import { Cell } from "./Cell";
 import { useSearchParams } from "next/navigation";
 
 export const GRID_SIZE = 201; // Maintain a fixed size
-export const SCROLL_STOP_DELAY = 500; // Milliseconds to wait after scrolling stops before fetching
+export const SCROLL_THRESHOLD = 0.1; // 100 pixels per second
 
 const InfiniteGrid: React.FC = () => {
   const searchParams = useSearchParams();
   const originX = useRef(0);
   const originY = useRef(0);
   const currentScroll = useRef<GridOnScrollProps>();
+  const fetchIntervalRef = useRef<NodeJS.Timeout>();
   const [windowDimensions, setWindowDimensions] = useState({
     height: 800,
     width: 600,
   });
   const [dimensionsInitialized, setDimensionsInitialized] = useState(false);
   const gridRef = useRef<Grid>(null);
-  const scrollDebounceRef = useRef<NodeJS.Timeout>();
-  const [isScrolling, setIsScrolling] = useState(true);
+  const lastScrollEventRef = useRef({
+    time: Date.now(),
+    scrollLeft: 0,
+    scrollTop: 0,
+  });
+  const [isScrolling, setIsScrolling] = useState(false);
+  const scrollDebounceRef = useRef<NodeJS.Timeout | null>(null);
   const hasScrolledToRightEdge = useRef(false);
   const hasScrolledToLeftEdge = useRef(false);
   const hasScrolledToTopEdge = useRef(false);
@@ -68,25 +74,35 @@ const InfiniteGrid: React.FC = () => {
   }, [navigateToXY, plot]);
 
   useEffect(() => {
-    if (!isScrolling && fetchQueue.length > 0) {
-      Promise.all(
-        fetchQueue.map(async (fetchRequest) => {
-          return fetchEthscription(
-            fetchRequest.x,
-            fetchRequest.y,
-            fetchRequest.subscribers
-          )
-            .then((ethscription) => {
-              fetchRequest.resolve(ethscription);
+    if (!isScrolling) {
+      fetchIntervalRef.current = setInterval(async () => {
+        if (fetchQueue.length > 0) {
+          Promise.all(
+            fetchQueue.map(async (fetchRequest) => {
+              return fetchEthscription(
+                fetchRequest.x,
+                fetchRequest.y,
+                fetchRequest.subscribers
+              )
+                .then((ethscription) => {
+                  fetchRequest.resolve(ethscription);
+                })
+                .catch((error) => {
+                  fetchRequest.reject(error);
+                });
             })
-            .catch((error) => {
-              fetchRequest.reject(error);
-            });
-        })
-      ).then(() => {
-        // Once all fetches are done, clear the fetchQueue
-        fetchQueue.splice(0, fetchQueue.length);
-      });
+          ).then(() => {
+            // Once all fetches are done, clear the fetchQueue
+            fetchQueue.splice(0, fetchQueue.length);
+          });
+        }
+      }, 100);
+
+      return () => {
+        if (fetchIntervalRef.current) {
+          clearInterval(fetchIntervalRef.current);
+        }
+      };
     }
   }, [isScrolling]);
 
@@ -167,19 +183,46 @@ const InfiniteGrid: React.FC = () => {
   const handleScroll = (props: GridOnScrollProps) => {
     currentScroll.current = props;
 
-    if (!isScrolling) {
+    // Calculate time elapsed since last scroll event
+    const timeElapsed = Date.now() - lastScrollEventRef.current.time;
+
+    // Calculate distance scrolled since last scroll event
+    const distanceScrolledX = Math.abs(
+      props.scrollLeft - lastScrollEventRef.current.scrollLeft
+    );
+    const distanceScrolledY = Math.abs(
+      props.scrollTop - lastScrollEventRef.current.scrollTop
+    );
+
+    // Calculate scrolling speed (pixels per millisecond)
+    const speedX = timeElapsed > 0 ? distanceScrolledX / timeElapsed : 0;
+    const speedY = timeElapsed > 0 ? distanceScrolledY / timeElapsed : 0;
+
+    // Save current scroll event for next calculation
+    lastScrollEventRef.current = {
+      time: Date.now(),
+      scrollLeft: props.scrollLeft,
+      scrollTop: props.scrollTop,
+    };
+
+    // Consider it is scrolling only when the speed is above a threshold
+    const isScrollingFast =
+      speedX > SCROLL_THRESHOLD || speedY > SCROLL_THRESHOLD;
+
+    if (isScrollingFast) {
+      // If scrolling fast, clear any existing timeouts
+      if (scrollDebounceRef.current) {
+        clearTimeout(scrollDebounceRef.current);
+      }
       setIsScrolling(true);
-    }
-
-    // Clear the existing timeout, if any
-    if (scrollDebounceRef.current) {
-      clearTimeout(scrollDebounceRef.current);
-    }
-
-    // Set a new timeout to trigger fetching after SCROLL_STOP_DELAY milliseconds
-    scrollDebounceRef.current = setTimeout(async () => {
+      // If not scrolling fast, set a timeout to set isScrolling to false
+      // If a new scroll event occurs before the timeout, the timeout will be cancelled
+      scrollDebounceRef.current = setTimeout(() => {
+        setIsScrolling(false);
+      }, 200); // Wait 200ms before considering the scrolling has stopped
+    } else {
       setIsScrolling(false);
-    }, SCROLL_STOP_DELAY);
+    }
   };
 
   if (!dimensionsInitialized) {
