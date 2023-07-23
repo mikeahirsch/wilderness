@@ -17,7 +17,7 @@ import { Cell } from "./Cell";
 import { useSearchParams } from "next/navigation";
 
 export const GRID_SIZE = 201; // Maintain a fixed size
-export const SCROLL_THRESHOLD = 0.1; // 100 pixels per second
+export const SCROLL_THRESHOLD = 0.5; // 500 pixels per second
 
 const InfiniteGrid: React.FC = () => {
   const searchParams = useSearchParams();
@@ -76,9 +76,11 @@ const InfiniteGrid: React.FC = () => {
   useEffect(() => {
     if (!isScrolling) {
       fetchIntervalRef.current = setInterval(async () => {
-        if (fetchQueue.length > 0) {
+        const fetchQueueCopy = [...fetchQueue];
+        fetchQueue.splice(0, fetchQueue.length);
+        if (fetchQueueCopy.length > 0) {
           Promise.all(
-            fetchQueue.map(async (fetchRequest) => {
+            fetchQueueCopy.map(async (fetchRequest) => {
               return fetchEthscription(
                 fetchRequest.x,
                 fetchRequest.y,
@@ -91,10 +93,7 @@ const InfiniteGrid: React.FC = () => {
                   fetchRequest.reject(error);
                 });
             })
-          ).then(() => {
-            // Once all fetches are done, clear the fetchQueue
-            fetchQueue.splice(0, fetchQueue.length);
-          });
+          );
         }
       }, 100);
 
