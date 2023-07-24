@@ -9,14 +9,18 @@
     "lint": "next lint"
   },
   "dependencies": {
+    "@apollo/client": "^3.7.17",
     "@types/node": "20.4.2",
     "@types/react": "18.2.15",
     "@types/react-dom": "18.2.7",
+    "apollo-absinthe-upload-link": "^1.7.0",
     "autoprefixer": "10.4.14",
     "axios": "^1.4.0",
     "crypto-js": "^4.1.1",
     "eslint": "8.45.0",
     "eslint-config-next": "13.4.10",
+    "ethers": "^6.6.5",
+    "lodash": "^4.17.21",
     "next": "13.4.10",
     "postcss": "8.4.26",
     "react": "18.2.0",
@@ -27,6 +31,7 @@
   },
   "devDependencies": {
     "@types/crypto-js": "^4.1.1",
+    "@types/lodash": "^4.14.195",
     "@types/react-window": "^1.8.5"
   }
 }

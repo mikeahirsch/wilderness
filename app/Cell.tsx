@@ -2,6 +2,7 @@ import { useState, useEffect, CSSProperties, useRef, useCallback } from "react";
 import { GridChildComponentProps } from "react-window";
 import {
   Ethscription,
+  MARKETPLACE_CONTRACT,
   addToFetchQueue,
   fetchQueue,
   getEthscriptionCache,
@@ -9,6 +10,8 @@ import {
 } from "./fetchEthscriptions";
 import { getWalletColor } from "./utils";
 import { GRID_SIZE } from "./InfiniteGrid";
+import { formatEther } from "ethers";
+import { sortBy } from "lodash";
 
 interface CellProps extends GridChildComponentProps {
   data: {
@@ -88,9 +91,13 @@ export const Cell: React.FC<CellProps> = ({
     }
   }, [cellData, updateNeighbors, x, y]);
 
-  const walletColor = cellData?.ethscription?.current_owner
-    ? getWalletColor(cellData.ethscription.current_owner)
-    : "";
+  const currentOwner =
+    cellData?.ethscription?.current_owner?.toLowerCase() ===
+    MARKETPLACE_CONTRACT?.toLowerCase()
+      ? cellData?.ethscription?.previous_owner
+      : cellData?.ethscription?.current_owner;
+
+  const walletColor = currentOwner ? getWalletColor(currentOwner) : "";
 
   let borderStyle: CSSProperties = {
     borderBottom: "2px solid black",
@@ -98,15 +105,33 @@ export const Cell: React.FC<CellProps> = ({
   };
 
   // Compare with top cell
-  if (cellData?.ethscription?.current_owner) {
-    const currentOwner = cellData?.ethscription?.current_owner;
-    if (neighbors.bottom && neighbors.bottom?.current_owner === currentOwner) {
+  if (currentOwner) {
+    const bottomOwner =
+      neighbors.bottom?.current_owner?.toLowerCase() ===
+      MARKETPLACE_CONTRACT?.toLowerCase()
+        ? neighbors.bottom?.previous_owner
+        : neighbors.bottom?.current_owner;
+    if (neighbors.bottom && bottomOwner === currentOwner) {
       delete borderStyle["borderBottom"];
     }
-    if (neighbors.right && neighbors.right?.current_owner === currentOwner) {
+    const rightOwner =
+      neighbors.right?.current_owner?.toLowerCase() ===
+      MARKETPLACE_CONTRACT?.toLowerCase()
+        ? neighbors.right?.previous_owner
+        : neighbors.right?.current_owner;
+    if (neighbors.right && rightOwner === currentOwner) {
       delete borderStyle["borderRight"];
     }
   }
+
+  const allListings = cellData?.ethscription?.listings ?? [];
+  const validListings = allListings.filter(
+    (l) =>
+      l.sellerAddress.toLowerCase() ===
+        cellData?.ethscription?.previous_owner?.toLowerCase() &&
+      l.endTime > Math.floor(Date.now() / 1000)
+  );
+  const listings = sortBy(validListings, (l) => Number(formatEther(l.price)));
 
   return (
     <div style={style as CSSProperties}>
@@ -116,7 +141,7 @@ export const Cell: React.FC<CellProps> = ({
           target="_blank"
         >
           <div
-            className={`w-full h-full flex flex-col items-center justify-center transition-all duration-200 hover:opacity-90`}
+            className="w-full h-full flex flex-col items-center justify-center transition-all duration-200 hover:opacity-90 gap-4"
             style={{
               backgroundSize: "cover",
               backgroundRepeat: "no-repeat",
@@ -128,6 +153,11 @@ export const Cell: React.FC<CellProps> = ({
             }}
           >
             <div>{`${x},${y}`}</div>
+            {!!listings.length && (
+              <div className="bg-green-500 border border-green-700 text-black px-2 py-1 rounded-md">
+                {formatEther(listings[0].price)} ETH
+              </div>
+            )}
           </div>
         </a>
       ) : (
