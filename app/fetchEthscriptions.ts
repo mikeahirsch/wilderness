@@ -147,7 +147,7 @@ let isFetching = false;
 
 export const fetchEthscriptions = async () => {
   // If a fetch is already in progress or is scrolling fast, simply return
-  if ((isFetching || isScrollingFast) && fetchQueue.length < 25) return;
+  if (isFetching || isScrollingFast) return;
 
   // Start fetching
   isFetching = true;
