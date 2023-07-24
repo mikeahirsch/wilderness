@@ -5,7 +5,7 @@ import {
   fetchQueue,
   getEthscriptionCache,
   subscribeToEthscription,
-} from "./fetchEthscription";
+} from "./fetchEthscriptions";
 import { getWalletColor } from "./utils";
 import { GRID_SIZE } from "./InfiniteGrid";
 
@@ -37,7 +37,7 @@ export const Cell: React.FC<CellProps> = ({
     setCellData(null);
 
     const fetchPromise = new Promise<Ethscription | null>((resolve, reject) => {
-      fetchQueue.push({ x, y, resolve, reject });
+      fetchQueue.push({ x, y, subscribers: [], resolve, reject });
     });
 
     fetchPromise
@@ -143,7 +143,7 @@ export const Cell: React.FC<CellProps> = ({
           style={borderStyle}
         >
           <div>{`${x},${y}`}</div>
-          {!!cellData && (
+          {!!cellData?.ethscription && (
             <div className="bg-green-500 border border-green-700 text-black px-2 py-1 rounded-md">
               Available
             </div>

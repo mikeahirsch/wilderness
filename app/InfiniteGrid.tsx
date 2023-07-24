@@ -12,12 +12,13 @@ import {
   GridOnItemsRenderedProps,
   GridOnScrollProps,
 } from "react-window";
-import { fetchEthscription, fetchQueue } from "./fetchEthscription";
+import { fetchEthscriptions, fetchQueue } from "./fetchEthscriptions";
 import { Cell } from "./Cell";
 import { useSearchParams } from "next/navigation";
+import sha256 from "crypto-js/sha256";
 
 export const GRID_SIZE = 201; // Maintain a fixed size
-export const SCROLL_THRESHOLD = 0.5; // 500 pixels per second
+export const SCROLL_THRESHOLD = 1; // 1000 pixels per second
 
 const InfiniteGrid: React.FC = () => {
   const searchParams = useSearchParams();
@@ -76,24 +77,37 @@ const InfiniteGrid: React.FC = () => {
   useEffect(() => {
     if (!isScrolling) {
       fetchIntervalRef.current = setInterval(async () => {
-        const fetchQueueCopy = [...fetchQueue];
-        fetchQueue.splice(0, fetchQueue.length);
-        if (fetchQueueCopy.length > 0) {
-          Promise.all(
-            fetchQueueCopy.map(async (fetchRequest) => {
-              return fetchEthscription(
-                fetchRequest.x,
-                fetchRequest.y,
-                fetchRequest.subscribers
-              )
-                .then((ethscription) => {
-                  fetchRequest.resolve(ethscription);
-                })
-                .catch((error) => {
-                  fetchRequest.reject(error);
-                });
-            })
-          );
+        if (fetchQueue.length > 0) {
+          const fetchQueueCopy = [...fetchQueue];
+          fetchQueue.splice(0, fetchQueue.length);
+
+          try {
+            const ethscriptions = await fetchEthscriptions(
+              fetchQueueCopy.map((fetchRequest) => ({
+                x: fetchRequest.x,
+                y: fetchRequest.y,
+                subscribers: fetchRequest.subscribers ?? [],
+              }))
+            );
+            if (ethscriptions) {
+              // Null check added here
+              fetchQueueCopy.forEach((request) => {
+                const { resolve } = request;
+                const matchingEthscription =
+                  ethscriptions.find(
+                    (ethscription) =>
+                      sha256(`data:,${request.x},${request.y}`).toString() ===
+                      sha256(ethscription.content_uri).toString()
+                  ) ?? null;
+                resolve(matchingEthscription);
+              });
+            } else {
+              console.log(ethscriptions);
+              throw new Error("Error fetching ethscriptions"); // Throwing an error if ethscriptions is null
+            }
+          } catch (error) {
+            fetchQueueCopy.forEach(({ reject }) => reject(error));
+          }
         }
       }, 100);
 
