@@ -2,6 +2,7 @@ import { useState, useEffect, CSSProperties, useRef, useCallback } from "react";
 import { GridChildComponentProps } from "react-window";
 import {
   Ethscription,
+  addToFetchQueue,
   fetchQueue,
   getEthscriptionCache,
   subscribeToEthscription,
@@ -36,11 +37,7 @@ export const Cell: React.FC<CellProps> = ({
   useEffect(() => {
     setCellData(null);
 
-    const fetchPromise = new Promise<Ethscription | null>((resolve, reject) => {
-      fetchQueue.push({ x, y, subscribers: [], resolve, reject });
-    });
-
-    fetchPromise
+    addToFetchQueue({ x, y, subscribers: [] })
       .then((ethscription) => {
         setCellData({ ethscription });
       })

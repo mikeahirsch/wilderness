@@ -25,7 +25,6 @@ const InfiniteGrid: React.FC = () => {
   const originX = useRef(0);
   const originY = useRef(0);
   const currentScroll = useRef<GridOnScrollProps>();
-  const fetchIntervalRef = useRef<NodeJS.Timeout>();
   const [windowDimensions, setWindowDimensions] = useState({
     height: 800,
     width: 600,
@@ -73,51 +72,6 @@ const InfiniteGrid: React.FC = () => {
       navigateToXY(x, y);
     }
   }, [navigateToXY, plot]);
-
-  useEffect(() => {
-    if (!isScrolling) {
-      fetchIntervalRef.current = setInterval(async () => {
-        if (fetchQueue.length > 0) {
-          const fetchQueueCopy = [...fetchQueue];
-          fetchQueue.splice(0, fetchQueue.length);
-
-          try {
-            const ethscriptions = await fetchEthscriptions(
-              fetchQueueCopy.map((fetchRequest) => ({
-                x: fetchRequest.x,
-                y: fetchRequest.y,
-                subscribers: fetchRequest.subscribers ?? [],
-              }))
-            );
-            if (ethscriptions) {
-              // Null check added here
-              fetchQueueCopy.forEach((request) => {
-                const { resolve } = request;
-                const matchingEthscription =
-                  ethscriptions.find(
-                    (ethscription) =>
-                      sha256(`data:,${request.x},${request.y}`).toString() ===
-                      sha256(ethscription.content_uri).toString()
-                  ) ?? null;
-                resolve(matchingEthscription);
-              });
-            } else {
-              console.log(ethscriptions);
-              throw new Error("Error fetching ethscriptions"); // Throwing an error if ethscriptions is null
-            }
-          } catch (error) {
-            fetchQueueCopy.forEach(({ reject }) => reject(error));
-          }
-        }
-      }, 100);
-
-      return () => {
-        if (fetchIntervalRef.current) {
-          clearInterval(fetchIntervalRef.current);
-        }
-      };
-    }
-  }, [isScrolling]);
 
   useEffect(() => {
     const handleResize = () => {

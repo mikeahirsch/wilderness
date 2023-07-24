@@ -19,22 +19,19 @@ export interface Ethscription {
 }
 
 export interface FetchResponse {
-  ethscriptions: Ethscription[];
-}
-
-export interface Plot {
-  x: number;
-  y: number;
+  [key: string]: Ethscription;
 }
 
 export interface FetchRequest {
   x: number;
   y: number;
-  resolve: (value: Ethscription | null) => void;
-  reject: (reason?: any) => void;
   subscribers: Subscriber[];
 }
 
+export interface QueueFetchRequest extends FetchRequest {
+  resolve: (value: Ethscription | null) => void;
+  reject: (reason?: any) => void;
+}
 export interface Subscriber {
   callback: (ethscription: Ethscription | null) => void;
   count: number;
@@ -49,7 +46,6 @@ export interface EthscriptionCacheItem {
 
 export type Unsubscribe = () => void;
 
-export const fetchQueue: FetchRequest[] = [];
 export const ethscriptionCache: { [key: string]: EthscriptionCacheItem } = {};
 export const cacheLifetime = 5 * 60 * 1000; // Cache items expire after 5 minutes
 
@@ -61,41 +57,25 @@ export const getEthscriptionCache = (x: number, y: number) => {
 
 let fetchPromise: Promise<Ethscription[]> | null = null;
 
-export const fetchEthscriptions = async (
-  fetchRequests: {
-    x: number;
-    y: number;
-    subscribers: Subscriber[];
-  }[]
-): Promise<Ethscription[]> => {
-  // If a fetch is already in progress, return the existing promise
-  if (fetchPromise) return fetchPromise;
-
-  const plots = fetchRequests.map((request) => ({
-    x: request.x,
-    y: request.y,
-  }));
+const fetchEthscriptionsFromServer = async (
+  fetchRequests: QueueFetchRequest[]
+) => {
+  const hashes = fetchRequests.map((request) =>
+    sha256(`data:,${request.x},${request.y}`).toString()
+  );
   const subscribersList = fetchRequests.map(
     (request) => request.subscribers || []
   );
-  const hashes = plots.map((plot) =>
-    sha256(`data:,${plot.x},${plot.y}`).toString()
-  );
 
-  const hashesParam = encodeURIComponent(JSON.stringify(hashes));
-
-  fetchPromise = fetch(
-    `https://api.ethscriptions.com/api/ethscriptions/filtered?sha=${hashesParam}`
-  )
+  return fetch(`https://api.ethscriptions.com/api/ethscriptions/exists_multi`, {
+    method: "POST",
+    body: JSON.stringify(hashes),
+  })
     .then(async (response) => {
       const json: FetchResponse = await response.json();
 
       hashes.forEach((hash, index) => {
-        const ethscription =
-          json.ethscriptions.find(
-            (ethscription) =>
-              sha256(ethscription.content_uri).toString() === hash
-          ) ?? null;
+        const ethscription = json[hash] ?? null;
 
         let cachedResponse = ethscriptionCache[hash];
         if (!cachedResponse) {
@@ -110,24 +90,76 @@ export const fetchEthscriptions = async (
         cachedResponse.ethscription = ethscription;
         cachedResponse.timestamp = Date.now();
         cachedResponse.fetchPromise = null;
+        cachedResponse.subscribers.push(...subscribersList[index]);
 
         cachedResponse.subscribers.forEach((subscriber) =>
           subscriber.callback(cachedResponse.ethscription)
         );
       });
 
-      // Once the fetch is complete, clear the fetchPromise
-      fetchPromise = null;
-
-      return json.ethscriptions;
+      return json;
     })
     .catch((error) => {
       // In case of error, also clear the fetchPromise
       fetchPromise = null;
       throw error;
     });
+};
 
-  return fetchPromise!;
+export let fetchQueue: QueueFetchRequest[] = [];
+let isFetching = false;
+
+export const fetchEthscriptions = async () => {
+  // If a fetch is already in progress, simply return
+  if (isFetching) return;
+
+  // Start fetching
+  isFetching = true;
+
+  while (fetchQueue.length > 0) {
+    // Get all items currently in the queue
+    const currentBatch = [...fetchQueue];
+
+    // Clear the queue
+    fetchQueue = [];
+
+    try {
+      // Process the current batch
+      const ethscriptions = await fetchEthscriptionsFromServer(currentBatch);
+
+      // Resolve the promises for each fetch request in the batch
+      currentBatch.forEach((request) => {
+        const hash = sha256(`data:,${request.x},${request.y}`).toString();
+        const matchingEthscription = ethscriptions[hash];
+        request.resolve(matchingEthscription);
+      });
+    } catch (error) {
+      // Reject the promises for each fetch request in the batch
+      currentBatch.forEach((request) => request.reject(error));
+    }
+  }
+
+  // Fetching is done
+  isFetching = false;
+};
+
+// Use this function to add a request to the fetch queue
+export const addToFetchQueue = (request: FetchRequest) => {
+  const promise = new Promise<Ethscription | null>((resolve, reject) => {
+    const cachedResponse = getEthscriptionCache(request.x, request.y);
+    if (
+      cachedResponse &&
+      cachedResponse.ethscription &&
+      Date.now() - cachedResponse.timestamp < cacheLifetime
+    ) {
+      resolve(cachedResponse.ethscription);
+    } else {
+      fetchQueue.push({ ...request, resolve, reject });
+      fetchEthscriptions();
+    }
+  });
+
+  return promise;
 };
 
 export const unsubscribeToEthscription = (
@@ -162,23 +194,12 @@ export const subscribeToEthscription = (
   const hash = sha256(`data:,${x},${y}`).toString();
   if (!ethscriptionCache[hash]) {
     const subscriber: Subscriber = { callback, count: 1 };
-    fetchEthscriptions([{ x, y, subscribers: [subscriber] }])
-      .then((ethscriptions) => {
-        const matchingEthscription =
-          ethscriptions?.find(
-            (ethscription) =>
-              sha256(`data:,${x},${y}`).toString() ===
-              sha256(ethscription.content_uri).toString()
-          ) ?? null;
-        ethscriptionCache[hash] = {
-          ethscription: matchingEthscription,
-          timestamp: Date.now(),
-          subscribers: [subscriber],
-        };
-        callback(matchingEthscription);
+    addToFetchQueue({ x, y, subscribers: [subscriber] })
+      .then((ethscription) => {
+        callback(ethscription);
       })
       .catch((error) => {
-        console.log(error);
+        console.error(error);
       });
   } else {
     const existingSubscriberIndex = ethscriptionCache[
