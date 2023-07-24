@@ -22,12 +22,3 @@ body {
       transparent,
       rgb(var(--background-end-rgb))) rgb(var(--background-start-rgb));
 }
-
-div {
-  -ms-overflow-style: none;
-  scrollbar-width: none;
-}
-
-div::-webkit-scrollbar {
-  display: none;
-}
