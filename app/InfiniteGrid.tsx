@@ -12,10 +12,9 @@ import {
   GridOnItemsRenderedProps,
   GridOnScrollProps,
 } from "react-window";
-import { fetchEthscriptions, fetchQueue } from "./fetchEthscriptions";
+import { setIsScrollingFast } from "./fetchEthscriptions";
 import { Cell } from "./Cell";
 import { useSearchParams } from "next/navigation";
-import sha256 from "crypto-js/sha256";
 
 export const GRID_SIZE = 201; // Maintain a fixed size
 export const SCROLL_THRESHOLD = 1; // 1000 pixels per second
@@ -36,7 +35,6 @@ const InfiniteGrid: React.FC = () => {
     scrollLeft: 0,
     scrollTop: 0,
   });
-  const [isScrolling, setIsScrolling] = useState(false);
   const scrollDebounceRef = useRef<NodeJS.Timeout | null>(null);
   const hasScrolledToRightEdge = useRef(false);
   const hasScrolledToLeftEdge = useRef(false);
@@ -181,14 +179,14 @@ const InfiniteGrid: React.FC = () => {
       if (scrollDebounceRef.current) {
         clearTimeout(scrollDebounceRef.current);
       }
-      setIsScrolling(true);
-      // If not scrolling fast, set a timeout to set isScrolling to false
+      setIsScrollingFast(true);
+      // If not scrolling fast, set a timeout to set isScrollingFast to false
       // If a new scroll event occurs before the timeout, the timeout will be cancelled
       scrollDebounceRef.current = setTimeout(() => {
-        setIsScrolling(false);
+        setIsScrollingFast(false);
       }, 200); // Wait 200ms before considering the scrolling has stopped
     } else {
-      setIsScrolling(false);
+      setIsScrollingFast(false);
     }
   };
 

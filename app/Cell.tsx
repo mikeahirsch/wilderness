@@ -140,7 +140,7 @@ export const Cell: React.FC<CellProps> = ({
           style={borderStyle}
         >
           <div>{`${x},${y}`}</div>
-          {!!cellData?.ethscription && (
+          {!!cellData && (
             <div className="bg-green-500 border border-green-700 text-black px-2 py-1 rounded-md">
               Available
             </div>

@@ -41,7 +41,6 @@ export interface EthscriptionCacheItem {
   ethscription: Ethscription | null;
   timestamp: number;
   subscribers: Subscriber[];
-  fetchPromise?: Promise<Ethscription | null> | null;
 }
 
 export type Unsubscribe = () => void;
@@ -55,7 +54,15 @@ export const getEthscriptionCache = (x: number, y: number) => {
   return cachedResponse;
 };
 
-let fetchPromise: Promise<Ethscription[]> | null = null;
+let isScrollingFast = false;
+
+export const setIsScrollingFast = (_isScrollingFast: boolean) => {
+  isScrollingFast = _isScrollingFast;
+
+  if (!isScrollingFast) {
+    fetchEthscriptions();
+  }
+};
 
 const fetchEthscriptionsFromServer = async (
   fetchRequests: QueueFetchRequest[]
@@ -70,48 +77,40 @@ const fetchEthscriptionsFromServer = async (
   return fetch(`https://api.ethscriptions.com/api/ethscriptions/exists_multi`, {
     method: "POST",
     body: JSON.stringify(hashes),
-  })
-    .then(async (response) => {
-      const json: FetchResponse = await response.json();
+  }).then(async (response) => {
+    const json: FetchResponse = await response.json();
 
-      hashes.forEach((hash, index) => {
-        const ethscription = json[hash] ?? null;
+    hashes.forEach((hash, index) => {
+      const ethscription = json[hash] ?? null;
 
-        let cachedResponse = ethscriptionCache[hash];
-        if (!cachedResponse) {
-          cachedResponse = ethscriptionCache[hash] = {
-            ethscription: null,
-            timestamp: Date.now(),
-            subscribers: subscribersList[index] || [],
-            fetchPromise: null,
-          };
-        }
+      let cachedResponse = ethscriptionCache[hash];
+      if (!cachedResponse) {
+        cachedResponse = ethscriptionCache[hash] = {
+          ethscription: null,
+          timestamp: Date.now(),
+          subscribers: subscribersList[index] || [],
+        };
+      }
 
-        cachedResponse.ethscription = ethscription;
-        cachedResponse.timestamp = Date.now();
-        cachedResponse.fetchPromise = null;
-        cachedResponse.subscribers.push(...subscribersList[index]);
+      cachedResponse.ethscription = ethscription;
+      cachedResponse.timestamp = Date.now();
+      cachedResponse.subscribers.push(...subscribersList[index]);
 
-        cachedResponse.subscribers.forEach((subscriber) =>
-          subscriber.callback(cachedResponse.ethscription)
-        );
-      });
-
-      return json;
-    })
-    .catch((error) => {
-      // In case of error, also clear the fetchPromise
-      fetchPromise = null;
-      throw error;
+      cachedResponse.subscribers.forEach((subscriber) =>
+        subscriber.callback(cachedResponse.ethscription)
+      );
     });
+
+    return json;
+  });
 };
 
 export let fetchQueue: QueueFetchRequest[] = [];
 let isFetching = false;
 
 export const fetchEthscriptions = async () => {
-  // If a fetch is already in progress, simply return
-  if (isFetching) return;
+  // If a fetch is already in progress or is scrolling fast, simply return
+  if (isFetching || isScrollingFast) return;
 
   // Start fetching
   isFetching = true;
