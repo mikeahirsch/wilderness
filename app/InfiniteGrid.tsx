@@ -15,6 +15,7 @@ import {
 import { setIsScrollingFast } from "./fetchEthscriptions";
 import { Cell } from "./Cell";
 import { useSearchParams } from "next/navigation";
+import styles from "./InfiniteGrid.module.css";
 
 export const GRID_SIZE = 201; // Maintain a fixed size
 export const SCROLL_THRESHOLD = 1; // 1000 pixels per second
@@ -217,6 +218,7 @@ const InfiniteGrid: React.FC = () => {
         onScroll={handleScroll}
         onItemsRendered={handleItemsRendered}
         itemData={{ originX, originY }}
+        className={styles.grid}
       >
         {Cell}
       </Grid>
