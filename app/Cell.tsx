@@ -1,4 +1,11 @@
-import { useState, useEffect, CSSProperties, useRef, useCallback } from "react";
+import {
+  useState,
+  useEffect,
+  CSSProperties,
+  useRef,
+  useCallback,
+  useMemo,
+} from "react";
 import { GridChildComponentProps } from "react-window";
 import {
   Ethscription,
@@ -9,7 +16,7 @@ import {
   subscribeToEthscription,
 } from "./fetchEthscriptions";
 import { getWalletColor } from "./utils";
-import { GRID_SIZE } from "./InfiniteGrid";
+import { GRID_SIZE, Listing } from "./InfiniteGrid";
 import { formatEther } from "ethers";
 import { sortBy } from "lodash";
 
@@ -17,6 +24,7 @@ interface CellProps extends GridChildComponentProps {
   data: {
     originX: React.MutableRefObject<number>;
     originY: React.MutableRefObject<number>;
+    listings: Listing[];
   };
 }
 
@@ -32,10 +40,20 @@ export const Cell: React.FC<CellProps> = ({
   const unsubscribesRef = useRef<(() => void)[]>([]);
   const x = columnIndex + data.originX.current - Math.floor(GRID_SIZE / 2);
   const y = (rowIndex + data.originY.current - Math.floor(GRID_SIZE / 2)) * -1;
-
   const [cellData, setCellData] = useState<{
     ethscription?: Ethscription | null;
   } | null>(null);
+  const listings = useMemo(
+    () =>
+      sortBy(
+        data.listings.filter(
+          (listing) =>
+            listing.ethscription_id === cellData?.ethscription?.transaction_hash
+        ),
+        (listing) => Number(formatEther(listing.price))
+      ),
+    [cellData?.ethscription?.transaction_hash, data.listings]
+  );
 
   useEffect(() => {
     setCellData(null);
@@ -123,15 +141,6 @@ export const Cell: React.FC<CellProps> = ({
       delete borderStyle["borderRight"];
     }
   }
-
-  const allListings = cellData?.ethscription?.listings ?? [];
-  const validListings = allListings.filter(
-    (l) =>
-      l.sellerAddress.toLowerCase() ===
-        cellData?.ethscription?.previous_owner?.toLowerCase() &&
-      l.endTime > Math.floor(Date.now() / 1000)
-  );
-  const listings = sortBy(validListings, (l) => Number(formatEther(l.price)));
 
   return (
     <div style={style as CSSProperties}>

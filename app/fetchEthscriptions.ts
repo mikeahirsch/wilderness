@@ -1,20 +1,7 @@
-import client from "@/services/client";
 import sha256 from "crypto-js/sha256";
-import { groupBy } from "lodash";
 
 export const MARKETPLACE_CONTRACT =
   "0xD729A94d6366a4fEac4A6869C8b3573cEe4701A9";
-
-export interface Listing {
-  id: string;
-  signature: string;
-  ethscriptionHash: string;
-  salt: string;
-  sellerAddress: string;
-  price: string;
-  startTime: number;
-  endTime: number;
-}
 
 export interface Ethscription {
   block_confirmations: number;
@@ -32,7 +19,6 @@ export interface Ethscription {
   transaction_hash: string;
   transaction_index: number;
   valid_data_uri: boolean;
-  listings?: Listing[];
 }
 
 export interface FetchResponse {
@@ -97,27 +83,7 @@ const fetchEthscriptionsFromServer = async (
   }).then(async (response) => {
     const json: FetchResponse = await response.json();
 
-    const ethscriptionsOnMarketplace = hashes
-      .filter(
-        (hash) =>
-          json[hash]?.current_owner?.toLowerCase() ===
-          MARKETPLACE_CONTRACT.toLowerCase()
-      )
-      .map((hash) => json[hash].transaction_hash);
-    const listingsRes = await client.getListings(ethscriptionsOnMarketplace);
-    const listings = groupBy(
-      listingsRes.data.listings as Listing[],
-      "ethscriptionHash"
-    );
-
     hashes.forEach((hash, index) => {
-      if (json[hash]) {
-        json[hash] = {
-          ...json[hash],
-          listings: listings[json[hash].transaction_hash],
-        };
-      }
-
       const ethscription = json[hash] ?? null;
 
       let cachedResponse = ethscriptionCache[hash];

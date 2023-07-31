@@ -15,9 +15,24 @@ import {
 import { setIsScrollingFast } from "./fetchEthscriptions";
 import { Cell } from "./Cell";
 import { useSearchParams } from "next/navigation";
+import axios from "axios";
 
 export const GRID_SIZE = 201; // Maintain a fixed size
 export const SCROLL_THRESHOLD = 1; // 1000 pixels per second
+
+export interface Listing {
+  chain_id: number;
+  domain_name: string;
+  domain_version: string;
+  end_time: number;
+  ethscription_id: string;
+  listing_id: string;
+  price: string;
+  seller: string;
+  signature: string;
+  start_time: number;
+  verifying_contract: string;
+}
 
 const InfiniteGrid: React.FC = () => {
   const searchParams = useSearchParams();
@@ -40,6 +55,7 @@ const InfiniteGrid: React.FC = () => {
   const hasScrolledToLeftEdge = useRef(false);
   const hasScrolledToTopEdge = useRef(false);
   const hasScrolledToBottomEdge = useRef(false);
+  const [listings, setListings] = useState<Listing[]>([]);
 
   const plot = useMemo(
     () => searchParams.get("plot") as string,
@@ -61,6 +77,15 @@ const InfiniteGrid: React.FC = () => {
       rowIndex: Math.floor(GRID_SIZE / 2),
       align: "center",
     });
+  }, []);
+
+  useEffect(() => {
+    (async () => {
+      const listingsRes = await axios.get(
+        "https://api.ethscriptions.com/api/listings"
+      );
+      setListings(listingsRes.data.valid as Listing[]);
+    })();
   }, []);
 
   useEffect(() => {
@@ -216,7 +241,7 @@ const InfiniteGrid: React.FC = () => {
         }
         onScroll={handleScroll}
         onItemsRendered={handleItemsRendered}
-        itemData={{ originX, originY }}
+        itemData={{ originX, originY, listings }}
       >
         {Cell}
       </Grid>
