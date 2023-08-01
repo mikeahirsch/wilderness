@@ -119,11 +119,8 @@ export const fetchEthscriptions = async () => {
   isFetching = true;
 
   while (fetchQueue.length > 0) {
-    // Get all items currently in the queue
-    const currentBatch = [...fetchQueue];
-
-    // Clear the queue
-    fetchQueue = [];
+    // Get the first 100 items from the queue
+    const currentBatch = fetchQueue.splice(0, 100);
 
     try {
       // Process the current batch

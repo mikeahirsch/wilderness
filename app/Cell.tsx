@@ -22,9 +22,12 @@ import { sortBy } from "lodash";
 
 interface CellProps extends GridChildComponentProps {
   data: {
-    originX: React.MutableRefObject<number>;
-    originY: React.MutableRefObject<number>;
+    originX: number;
+    originY: number;
     listings: Listing[];
+    refreshCell: number;
+    resizing: boolean;
+    cellSize: number;
   };
 }
 
@@ -38,8 +41,8 @@ export const Cell: React.FC<CellProps> = ({
     [key: string]: Ethscription | null;
   }>({});
   const unsubscribesRef = useRef<(() => void)[]>([]);
-  const x = columnIndex + data.originX.current - Math.floor(GRID_SIZE / 2);
-  const y = (rowIndex + data.originY.current - Math.floor(GRID_SIZE / 2)) * -1;
+  const x = columnIndex + data.originX - Math.floor(GRID_SIZE / 2);
+  const y = (rowIndex + data.originY - Math.floor(GRID_SIZE / 2)) * -1;
   const [cellData, setCellData] = useState<{
     ethscription?: Ethscription | null;
   } | null>(null);
@@ -75,7 +78,7 @@ export const Cell: React.FC<CellProps> = ({
         fetchQueue.splice(requestIndex, 1);
       }
     };
-  }, [x, y]);
+  }, [x, y, data.refreshCell]);
 
   const updateNeighbors = useCallback(() => {
     const rightNeighbor = getEthscriptionCache(x + 1, y)?.ethscription;
@@ -142,6 +145,10 @@ export const Cell: React.FC<CellProps> = ({
     }
   }
 
+  if (data.resizing) {
+    return <div style={style as CSSProperties} />;
+  }
+
   return (
     <div style={style as CSSProperties}>
       {cellData?.ethscription?.current_owner ? (
@@ -150,7 +157,7 @@ export const Cell: React.FC<CellProps> = ({
           target="_blank"
         >
           <div
-            className="w-full h-full flex flex-col items-center justify-center transition-all duration-200 hover:opacity-90 gap-4"
+            className="w-full h-full flex flex-col items-center justify-center transition-all duration-200 hover:opacity-90 gap-2"
             style={{
               backgroundSize: "cover",
               backgroundRepeat: "no-repeat",
@@ -158,12 +165,13 @@ export const Cell: React.FC<CellProps> = ({
               imageRendering: "pixelated",
               backgroundColor: walletColor, // fallback background color
               position: "relative",
+              fontSize: data.cellSize < 70 ? data.cellSize / 5 : undefined,
               ...borderStyle,
             }}
           >
             <div>{`${x},${y}`}</div>
-            {!!listings.length && (
-              <div className="bg-green-500 border border-green-700 text-black px-2 py-1 rounded-md">
+            {!!listings.length && data.cellSize > 70 && (
+              <div className="bg-green-500 border border-green-700 font-bold text-black px-2 py-1 rounded-md text-xs">
                 {formatEther(listings[0].price)} ETH
               </div>
             )}
@@ -173,14 +181,17 @@ export const Cell: React.FC<CellProps> = ({
         <div
           className={
             cellData
-              ? `w-full h-full flex flex-col items-center justify-center gap-4`
+              ? `w-full h-full flex flex-col items-center justify-center gap-2`
               : "animate-pulse w-full h-full flex items-center justify-center text-black bg-white"
           }
-          style={borderStyle}
+          style={{
+            fontSize: data.cellSize < 70 ? data.cellSize / 5 : undefined,
+            ...borderStyle,
+          }}
         >
           <div>{`${x},${y}`}</div>
-          {!!cellData && (
-            <div className="bg-green-500 border border-green-700 text-black px-2 py-1 rounded-md">
+          {!!cellData && data.cellSize > 70 && (
+            <div className="bg-green-500 border border-green-700 font-bold text-black px-2 py-1 rounded-md text-xs">
               Available
             </div>
           )}

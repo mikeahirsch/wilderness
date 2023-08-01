@@ -17,7 +17,7 @@ import { Cell } from "./Cell";
 import { useSearchParams } from "next/navigation";
 import axios from "axios";
 
-export const GRID_SIZE = 201; // Maintain a fixed size
+export const GRID_SIZE = 2001; // Maintain a fixed size
 export const SCROLL_THRESHOLD = 1; // 1000 pixels per second
 
 export interface Listing {
@@ -36,12 +36,16 @@ export interface Listing {
 
 const InfiniteGrid: React.FC = () => {
   const searchParams = useSearchParams();
-  const originX = useRef(0);
-  const originY = useRef(0);
+  const [originX, setOriginX] = useState(0);
+  const [originY, setOriginY] = useState(0);
+  const [zoom, setZoom] = useState(1);
+  const keysPressed = useRef<{ [key: string]: boolean }>({});
+  const initialPinchDistance = useRef<number | null>(null);
+  const [refreshCell, setRefreshCell] = useState(0);
   const currentScroll = useRef<GridOnScrollProps>();
   const [windowDimensions, setWindowDimensions] = useState({
-    height: 800,
-    width: 600,
+    height: 0,
+    width: 0,
   });
   const [dimensionsInitialized, setDimensionsInitialized] = useState(false);
   const gridRef = useRef<Grid>(null);
@@ -56,28 +60,112 @@ const InfiniteGrid: React.FC = () => {
   const hasScrolledToTopEdge = useRef(false);
   const hasScrolledToBottomEdge = useRef(false);
   const [listings, setListings] = useState<Listing[]>([]);
+  const [resizing, setResizing] = useState(false);
+  const prevWindowDimensions = useRef({
+    height: 0,
+    width: 0,
+  });
+  const prevZoom = useRef(1);
 
   const plot = useMemo(
     () => searchParams.get("plot") as string,
     [searchParams]
   );
 
-  const cellSize = Math.ceil(
+  const cellSizeWithoutZoom =
     (windowDimensions.height > windowDimensions.width
       ? windowDimensions.width
-      : windowDimensions.height) / 3
-  );
+      : windowDimensions.height) / 4;
+  const cellSize = cellSizeWithoutZoom * zoom;
   const halfCellSize = cellSize / 2;
 
+  useEffect(() => {
+    if (resizing) {
+      const timeout = setTimeout(() => setResizing(false), 250);
+      return () => {
+        clearTimeout(timeout);
+      };
+    }
+  }, [resizing]);
+
   const navigateToXY = useCallback((x: number, y: number) => {
-    originX.current = x;
-    originY.current = -y;
+    setOriginX(x);
+    setOriginY(-y);
     gridRef.current?.scrollToItem({
       columnIndex: Math.floor(GRID_SIZE / 2),
       rowIndex: Math.floor(GRID_SIZE / 2),
       align: "center",
     });
   }, []);
+
+  const handleKeyDown = useCallback(
+    (event: KeyboardEvent) => {
+      keysPressed.current[event.key.toLowerCase()] = true; // set the key as pressed
+
+      if (currentScroll.current && gridRef.current) {
+        let currentScrollTop = currentScroll.current.scrollTop;
+        let currentScrollLeft = currentScroll.current.scrollLeft;
+
+        const newScroll = {
+          scrollTop: currentScrollTop,
+          scrollLeft: currentScrollLeft,
+        };
+
+        if (keysPressed.current["w"] || keysPressed.current["arrowup"]) {
+          setIsScrollingFast(true);
+          newScroll.scrollTop = currentScrollTop - cellSize / 2;
+        }
+
+        if (keysPressed.current["s"] || keysPressed.current["arrowdown"]) {
+          setIsScrollingFast(true);
+          newScroll.scrollTop = currentScrollTop + cellSize / 2;
+        }
+
+        if (keysPressed.current["a"] || keysPressed.current["arrowleft"]) {
+          setIsScrollingFast(true);
+          newScroll.scrollLeft = currentScrollLeft - cellSize / 2;
+        }
+
+        if (keysPressed.current["d"] || keysPressed.current["arrowright"]) {
+          setIsScrollingFast(true);
+          newScroll.scrollLeft = currentScrollLeft + cellSize / 2;
+        }
+
+        gridRef.current.scrollTo(newScroll);
+      }
+    },
+    [cellSize]
+  );
+
+  const handleKeyUp = useCallback((event: KeyboardEvent) => {
+    keysPressed.current[event.key.toLowerCase()] = false; // unset the key
+
+    if (
+      [
+        "w",
+        "s",
+        "a",
+        "d",
+        "arrowup",
+        "arrowdown",
+        "arrowleft",
+        "arrowright",
+      ].includes(event.key.toLowerCase())
+    ) {
+      setIsScrollingFast(false);
+      setRefreshCell((refresh) => (refresh += 1));
+    }
+  }, []);
+
+  useEffect(() => {
+    window.addEventListener("keydown", handleKeyDown);
+    window.addEventListener("keyup", handleKeyUp);
+
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+      window.removeEventListener("keyup", handleKeyUp);
+    };
+  }, [handleKeyDown, handleKeyUp]);
 
   useEffect(() => {
     (async () => {
@@ -98,6 +186,7 @@ const InfiniteGrid: React.FC = () => {
 
   useEffect(() => {
     const handleResize = () => {
+      setResizing(true);
       setWindowDimensions({
         height: window.innerHeight,
         width: window.innerWidth,
@@ -165,7 +254,8 @@ const InfiniteGrid: React.FC = () => {
         shouldNavigate || handleEdge(closeToRightEdge, hasScrolledToRightEdge);
 
       if (shouldNavigate) {
-        navigateToXY(rowInMiddle, columnInMiddle);
+        console.log("shouldNavigate");
+        navigateToXY(columnInMiddle, rowInMiddle);
       }
     }
   };
@@ -210,10 +300,163 @@ const InfiniteGrid: React.FC = () => {
       scrollDebounceRef.current = setTimeout(() => {
         setIsScrollingFast(false);
       }, 200); // Wait 200ms before considering the scrolling has stopped
-    } else {
-      setIsScrollingFast(false);
     }
   };
+
+  const centerAndZoomScroll = useCallback(
+    (newZoom: number, oldZoom: number) => {
+      if (currentScroll.current && gridRef.current) {
+        const center = {
+          x: currentScroll.current.scrollLeft + windowDimensions.width / 2,
+          y: currentScroll.current.scrollTop + windowDimensions.height / 2,
+        };
+        const newCenter = {
+          x: (center.x * newZoom) / oldZoom,
+          y: (center.y * newZoom) / oldZoom,
+        };
+        const scrollLeft = newCenter.x - windowDimensions.width / 2;
+        const scrollTop = newCenter.y - windowDimensions.height / 2;
+
+        gridRef.current.scrollTo({ scrollLeft, scrollTop });
+      }
+    },
+    [windowDimensions.height, windowDimensions.width]
+  );
+
+  useEffect(() => {
+    const timeout = setTimeout(() => {
+      if (
+        dimensionsInitialized &&
+        currentScroll.current &&
+        gridRef.current &&
+        (windowDimensions.height !== prevWindowDimensions.current.height ||
+          windowDimensions.width !== prevWindowDimensions.current.width ||
+          zoom === prevZoom.current)
+      ) {
+        if (
+          prevWindowDimensions.current.height &&
+          prevWindowDimensions.current.width
+        ) {
+          const oldCellSize =
+            (prevWindowDimensions.current.height >
+            prevWindowDimensions.current.width
+              ? prevWindowDimensions.current.width
+              : prevWindowDimensions.current.height) / 3;
+          const newCellSize =
+            (windowDimensions.height > windowDimensions.width
+              ? windowDimensions.width
+              : windowDimensions.height) / 3;
+          const currentScrollLeft = currentScroll.current.scrollLeft;
+          const currentScrollTop = currentScroll.current.scrollTop;
+          const sizeChange =
+            (newCellSize * zoom) / (oldCellSize * prevZoom.current);
+          const newScrollLeft = currentScrollLeft * sizeChange;
+          const newScrollTop = currentScrollTop * sizeChange;
+
+          gridRef.current.scrollTo({
+            scrollLeft: newScrollLeft,
+            scrollTop: newScrollTop,
+          });
+        }
+        prevWindowDimensions.current = windowDimensions;
+      } else {
+        prevZoom.current = zoom;
+      }
+    }, 200);
+    return () => {
+      clearTimeout(timeout);
+    };
+  }, [dimensionsInitialized, windowDimensions, zoom]);
+
+  // Event handler to zoom in
+  const zoomIn = useCallback(() => {
+    const newZoom = Math.min(2, zoom + 0.2);
+    setResizing(true);
+    centerAndZoomScroll(newZoom, zoom);
+    setZoom(newZoom);
+  }, [centerAndZoomScroll, zoom]);
+
+  // Event handler to zoom out
+  const zoomOut = useCallback(() => {
+    const newZoom = Math.max(0.5, zoom - 0.2);
+    setResizing(true);
+    centerAndZoomScroll(newZoom, zoom);
+    setZoom(newZoom);
+  }, [centerAndZoomScroll, zoom]);
+
+  const handleWheel = useCallback(
+    (event: WheelEvent) => {
+      // Zooming if Command (or Control) key is pressed
+      if (event.metaKey || event.ctrlKey) {
+        if (event.deltaY < 0) {
+          zoomIn();
+        } else {
+          zoomOut();
+        }
+        event.preventDefault();
+      }
+      // Scrolling is allowed to propagate naturally if Command (or Control) key is not pressed
+    },
+    [zoomIn, zoomOut]
+  );
+
+  // Event handlers to listen to zooming commands
+  useEffect(() => {
+    window.addEventListener("wheel", handleWheel, { passive: false });
+    return () => {
+      window.removeEventListener("wheel", handleWheel);
+    };
+  }, [handleWheel]);
+
+  const handleTouchStart = useCallback((event: TouchEvent) => {
+    if (event.touches.length === 2) {
+      initialPinchDistance.current = Math.hypot(
+        event.touches[0].pageX - event.touches[1].pageX,
+        event.touches[0].pageY - event.touches[1].pageY
+      );
+    }
+  }, []);
+
+  const handleTouchMove = useCallback(
+    (event: TouchEvent) => {
+      if (event.touches.length === 2 && initialPinchDistance.current) {
+        const newDistance = Math.hypot(
+          event.touches[0].pageX - event.touches[1].pageX,
+          event.touches[0].pageY - event.touches[1].pageY
+        );
+        const difference = newDistance - initialPinchDistance.current;
+
+        if (Math.abs(difference) >= 10) {
+          // Change this threshold as per your requirement
+          if (difference > 0) {
+            zoomIn();
+          } else {
+            zoomOut();
+          }
+          initialPinchDistance.current = newDistance;
+        }
+        event.preventDefault();
+      }
+    },
+    [zoomIn, zoomOut]
+  );
+
+  const handleTouchEnd = useCallback(() => {
+    initialPinchDistance.current = null;
+  }, []);
+
+  useEffect(() => {
+    window.addEventListener("touchstart", handleTouchStart, { passive: false });
+    window.addEventListener("touchmove", handleTouchMove, { passive: false });
+    window.addEventListener("touchend", handleTouchEnd);
+    window.addEventListener("touchcancel", handleTouchEnd);
+    return () => {
+      window.removeEventListener("touchstart", handleTouchStart);
+      window.removeEventListener("touchmove", handleTouchMove);
+      window.removeEventListener("touchend", handleTouchEnd);
+      window.removeEventListener("touchcancel", handleTouchEnd);
+    };
+  }, [handleTouchStart, handleTouchMove, handleTouchEnd]);
 
   if (!dimensionsInitialized) {
     return null;
@@ -241,7 +484,14 @@ const InfiniteGrid: React.FC = () => {
         }
         onScroll={handleScroll}
         onItemsRendered={handleItemsRendered}
-        itemData={{ originX, originY, listings }}
+        itemData={{
+          originX,
+          originY,
+          listings,
+          refreshCell,
+          resizing,
+          cellSize,
+        }}
       >
         {Cell}
       </Grid>
